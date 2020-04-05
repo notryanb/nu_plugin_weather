@@ -1,0 +1,13 @@
+[package]
+name = "nu_plugin_weather"
+version = "0.1.0"
+authors = ["Ryan Blecher <notryanb@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+nu-errors = "0.10.0"
+nu-plugin = "0.10.0"
+nu-protocol = "0.10.0"
+nu-source = "0.10.0"
+futures = { version = "0.3", features = ["compat", "io-compat"] }
+surf = "1.0.3"
