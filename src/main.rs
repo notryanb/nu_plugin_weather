@@ -84,7 +84,7 @@ async fn make_request(
     let api_response: ApiResponse = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
     dbg!(&api_response);
 
-    let serialized = serde_json::to_string(&api_response.city);
+    let serialized = serde_json::to_string(&api_response.list);
 
     Ok((
             Some("json".to_string()),
@@ -105,6 +105,17 @@ async fn make_request(
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiResponse {
     pub city: City,
+    pub list: Vec<List>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct List {
+    pub main: Main,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Main {
+    pub temp: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,8 +145,8 @@ impl Serialize for City {
         let mut state = serializer.serialize_struct("City", 6)?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("population", &self.population)?;
-        state.serialize_field("sunrise", &sunrise_str)?;
-        state.serialize_field("sunset", &sunset_str)?;
+        state.serialize_field("sunrise_utc", &sunrise_str)?;
+        state.serialize_field("sunset_utc", &sunset_str)?;
         state.serialize_field("sunrise_tz", &sunrise_tz_str)?;
         state.serialize_field("sunset_tz", &sunset_tz_str)?;
         state.end()
