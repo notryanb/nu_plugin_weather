@@ -2,11 +2,12 @@ use futures::executor::block_on;
 use nu_errors::ShellError;
 use nu_plugin::{serve_plugin, Plugin};
 use nu_protocol::{
-    CallInfo, CommandAction, ReturnSuccess, ReturnValue, Signature, SyntaxShape, UntaggedValue, Value,
+    CallInfo, CommandAction, ReturnSuccess, ReturnValue, Signature, SyntaxShape, UntaggedValue,
+    Value,
 };
 use nu_source::{AnchorLocation, Span, Tag};
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde::ser::{Serializer, SerializeStruct};
 
 struct Weather {
     pub api_key: String,
@@ -16,14 +17,14 @@ struct Weather {
 impl Plugin for Weather {
     fn config(&mut self) -> Result<Signature, ShellError> {
         Ok(Signature::build("weather")
-           .desc("Displays weather information")
-           .named(
-               "city",
-               SyntaxShape::Any,
-               "the city to retrieve weather for",
-               Some('c'),
-               )
-           .filter())
+            .desc("Displays weather information")
+            .named(
+                "city",
+                SyntaxShape::Any,
+                "the city to retrieve weather for",
+                Some('c'),
+            )
+            .filter())
     }
 
     fn begin_filter(&mut self, call_info: CallInfo) -> Result<Vec<ReturnValue>, ShellError> {
@@ -36,7 +37,7 @@ impl Plugin for Weather {
             "https://api.openweathermap.org/data/2.5/forecast?&mode=json&q={}&appid={}",
             self.city.as_ref().unwrap(),
             self.api_key
-            );
+        );
         Ok(vec![block_on(weather_helper(&url, &call_info))])
     }
 
@@ -53,7 +54,10 @@ fn main() {
     let api_key = std::env::var("OPEN_WEATHER_API_KEY")
         .expect("Missing OPEN_WEATHER_API_KEY ENV var")
         .to_string();
-    serve_plugin(&mut Weather { api_key, city: None });
+    serve_plugin(&mut Weather {
+        api_key,
+        city: None,
+    });
 }
 
 pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
@@ -69,37 +73,36 @@ pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
     let tagged_contents = contents.retag(tag);
 
     Ok(ReturnSuccess::Action(CommandAction::AutoConvert(
-                tagged_contents,
-                "json".to_string(),
-                )))
+        tagged_contents,
+        "json".to_string(),
+    )))
 }
 
 async fn make_request(
     url: &str,
     span: &Span,
-    ) -> Result<(Option<String>, UntaggedValue, Tag), ShellError> {
+) -> Result<(Option<String>, UntaggedValue, Tag), ShellError> {
     let mut response = surf::get(&url).await?;
 
     // Deserialize json
-    let api_response: ApiResponse = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
-    dbg!(&api_response);
-
+    let api_response: ApiResponse =
+        serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
     let serialized = serde_json::to_string(&api_response.list);
 
     Ok((
-            Some("json".to_string()),
-            UntaggedValue::string(serialized.map_err(|_| {
-                ShellError::labeled_error(
-                    "Could not load text from remote url",
-                    "could not load",
-                    span,
-                    )
-            })?),
-            Tag {
-                span: *span,
-                anchor: Some(AnchorLocation::Url(url.to_string())),
-            },
-            ))
+        Some("json".to_string()),
+        UntaggedValue::string(serialized.map_err(|_| {
+            ShellError::labeled_error(
+                "Could not load text from remote url",
+                "could not load",
+                span,
+            )
+        })?),
+        Tag {
+            span: *span,
+            anchor: Some(AnchorLocation::Url(url.to_string())),
+        },
+    ))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -110,12 +113,68 @@ pub struct ApiResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct List {
+    pub dt_txt: String,
+    pub dt: i64,
     pub main: Main,
+    pub weather: Vec<CurrentWeather>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum WeatherCondition {
+    Clouds,
+    Clear,
+    Thunderstorm,
+    Drizzle,
+    Rain,
+    Snow,
+    Mist,
+    Smoke,
+    Haze,
+    Dust,
+    Fog,
+    Sand,
+    Ash,
+    Squall,
+    Tornado,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Main {
     pub temp: f32,
+    pub feels_like: f32,
+    pub temp_min: f32,
+    pub temp_max: f32,
+    pub pressure: i32,
+    pub sea_level: i32,
+    pub grnd_level: i32,
+    pub humidity: i32,
+    pub temp_kf: f32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CurrentWeather {
+    pub main: WeatherCondition,
+    pub description: String,
+}
+
+impl Serialize for CurrentWeather {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let emoji = match &self.main {
+            WeatherCondition::Clouds => "☁",
+            WeatherCondition::Clear => "🌞",
+            WeatherCondition::Rain => "🌧",
+            _ => "no emoji",
+        };
+
+        let mut state = serializer.serialize_struct("CurrentWeather", 3)?;
+        state.serialize_field("main", &self.main)?;
+        state.serialize_field("description", &self.description)?;
+        state.serialize_field("emoji", &emoji)?;
+        state.end()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,7 +192,7 @@ impl Serialize for City {
     where
         S: Serializer,
     {
-        use chrono::{Utc, TimeZone};
+        use chrono::{TimeZone, Utc};
         let sunrise_str = Utc.timestamp(self.sunrise, 0).to_string();
         let sunset_str = Utc.timestamp(self.sunset, 0).to_string();
 
