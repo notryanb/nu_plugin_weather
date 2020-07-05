@@ -111,12 +111,40 @@ pub struct ApiResponse {
     pub list: Vec<List>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct List {
     pub dt_txt: String,
     pub dt: i64,
     pub main: Main,
     pub weather: Vec<CurrentWeather>,
+}
+
+impl Serialize for List {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("List", 4)?;
+        state.serialize_field("date_time_text", &self.dt_txt)?;
+        state.serialize_field("date_time", &self.dt)?;
+        state.serialize_field("temperature", &(1.8 * (&self.main.temp - 273.15) + 32.0))?;
+        state.serialize_field("feels_like", &(1.8 * (&self.main.feels_like - 273.15) + 32.0))?;
+
+        if let Some(weather) = &self.weather.iter().take(1).next() {
+            let emoji = match &weather.main {
+                WeatherCondition::Clouds => "☁",
+                WeatherCondition::Clear => "🌞",
+                WeatherCondition::Rain => "🌧",
+                _ => "no emoji",
+            };
+
+            state.serialize_field("main", &weather.main)?;
+            state.serialize_field("description", &weather.description)?;
+            state.serialize_field("emoji", &emoji)?;
+        }
+        
+        state.end()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
