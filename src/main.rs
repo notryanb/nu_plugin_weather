@@ -34,7 +34,7 @@ impl Plugin for Weather {
         };
 
         let url = format!(
-            "https://api.openweathermap.org/data/2.5/forecast?&mode=json&q={}&appid={}",
+            "https://api.openweathermap.org/data/2.5/weather?q={}&appid={}",
             self.city.as_ref().unwrap(),
             self.api_key
         );
@@ -85,9 +85,8 @@ async fn make_request(
     let mut response = surf::get(&url).await?;
 
     // Deserialize json
-    let api_response: ApiResponse =
-        serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
-    let serialized = serde_json::to_string(&api_response.list);
+    let api_response: List = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
+    let serialized = serde_json::to_string(&api_response);
 
     Ok((
         Some("json".to_string()),
@@ -113,10 +112,11 @@ pub struct ApiResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct List {
-    pub dt_txt: String,
+    pub dt_txt: Option<String>,
     pub dt: i64,
     pub main: Main,
     pub weather: Vec<CurrentWeather>,
+    pub timezone: i64,
 }
 
 impl Serialize for List {
@@ -124,17 +124,28 @@ impl Serialize for List {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("List", 4)?;
-        state.serialize_field("date_time_text", &self.dt_txt)?;
-        state.serialize_field("date_time", &self.dt)?;
+        use chrono::{TimeZone, Utc};
+        let dt = Utc.timestamp(self.dt + self.timezone, 0);
+        let day_of_week = &dt.format("%A").to_string();
+        let date = &dt.format("%b %e %Y").to_string();
+        let time = &dt.format("%I:%M:%S %P").to_string();
+
+        let mut state = serializer.serialize_struct("List", 8)?;
+        state.serialize_field("date", &date)?;
+        state.serialize_field("time", &time)?;
+        state.serialize_field("day_of_week", &day_of_week)?;
         state.serialize_field("temperature", &(1.8 * (&self.main.temp - 273.15) + 32.0))?;
-        state.serialize_field("feels_like", &(1.8 * (&self.main.feels_like - 273.15) + 32.0))?;
+        state.serialize_field(
+            "feels_like",
+            &(1.8 * (&self.main.feels_like - 273.15) + 32.0),
+        )?;
 
         if let Some(weather) = &self.weather.iter().take(1).next() {
             let emoji = match &weather.main {
                 WeatherCondition::Clouds => "☁",
                 WeatherCondition::Clear => "🌞",
                 WeatherCondition::Rain => "🌧",
+                WeatherCondition::Haze => "🌫",
                 _ => "no emoji",
             };
 
@@ -142,7 +153,7 @@ impl Serialize for List {
             state.serialize_field("description", &weather.description)?;
             state.serialize_field("emoji", &emoji)?;
         }
-        
+
         state.end()
     }
 }
@@ -173,10 +184,10 @@ pub struct Main {
     pub temp_min: f32,
     pub temp_max: f32,
     pub pressure: i32,
-    pub sea_level: i32,
-    pub grnd_level: i32,
+    pub sea_level: Option<i32>,
+    pub grnd_level: Option<i32>,
     pub humidity: i32,
-    pub temp_kf: f32,
+    pub temp_kf: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,27 +196,7 @@ pub struct CurrentWeather {
     pub description: String,
 }
 
-impl Serialize for CurrentWeather {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let emoji = match &self.main {
-            WeatherCondition::Clouds => "☁",
-            WeatherCondition::Clear => "🌞",
-            WeatherCondition::Rain => "🌧",
-            _ => "no emoji",
-        };
-
-        let mut state = serializer.serialize_struct("CurrentWeather", 3)?;
-        state.serialize_field("main", &self.main)?;
-        state.serialize_field("description", &self.description)?;
-        state.serialize_field("emoji", &emoji)?;
-        state.end()
-    }
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct City {
     pub id: i32,
     pub name: String,
@@ -213,29 +204,4 @@ pub struct City {
     pub timezone: i64,
     pub sunrise: i64,
     pub sunset: i64,
-}
-
-impl Serialize for City {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        use chrono::{TimeZone, Utc};
-        let sunrise_str = Utc.timestamp(self.sunrise, 0).to_string();
-        let sunset_str = Utc.timestamp(self.sunset, 0).to_string();
-
-        let sunrise_tz = &self.sunrise + &self.timezone;
-        let sunrise_tz_str = Utc.timestamp(sunrise_tz, 0).to_string();
-        let sunset_tz = &self.sunset + &self.timezone;
-        let sunset_tz_str = Utc.timestamp(sunset_tz, 0).to_string();
-
-        let mut state = serializer.serialize_struct("City", 6)?;
-        state.serialize_field("name", &self.name)?;
-        state.serialize_field("population", &self.population)?;
-        state.serialize_field("sunrise_utc", &sunrise_str)?;
-        state.serialize_field("sunset_utc", &sunset_str)?;
-        state.serialize_field("sunrise_tz", &sunrise_tz_str)?;
-        state.serialize_field("sunset_tz", &sunset_tz_str)?;
-        state.end()
-    }
 }
