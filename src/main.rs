@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 struct Weather {
     pub api_key: String,
     pub city: Option<String>,
+    pub info_type: Option<String>,
 }
 
 impl Plugin for Weather {
@@ -24,6 +25,12 @@ impl Plugin for Weather {
                 "the city to retrieve weather for",
                 Some('c'),
             )
+            .named(
+                "type",
+                SyntaxShape::Any,
+                "current or forecast",
+                Some('t'),
+            )
             .filter())
     }
 
@@ -33,11 +40,27 @@ impl Plugin for Weather {
             None => Some("huntington".to_string()),
         };
 
-        let url = format!(
-            "https://api.openweathermap.org/data/2.5/weather?q={}&appid={}",
-            self.city.as_ref().unwrap(),
-            self.api_key
-        );
+        self.info_type = match call_info.args.get("type") {
+            Some(info_type) => Some(info_type.as_string()?),
+            None => Some("current".to_string()),
+        };
+
+        let url;
+
+        if self.info_type.as_ref().unwrap() == &"current".to_string() {
+            url = format!(
+                "https://api.openweathermap.org/data/2.5/weather?q={}&appid={}",
+                self.city.as_ref().unwrap(),
+                self.api_key
+            );
+        } else {
+            url = format!(
+                "https://api.openweathermap.org/data/2.5/forecast?q={}&mode=json&appid={}",
+                self.city.as_ref().unwrap(),
+                self.api_key
+            );
+        }
+
         Ok(vec![block_on(weather_helper(&url, &call_info))])
     }
 
@@ -57,17 +80,23 @@ fn main() {
     serve_plugin(&mut Weather {
         api_key,
         city: None,
+        info_type: None,
     });
 }
 
 pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
     let tag = &call_info.name_tag;
     let span = tag.span;
-    let result = make_request(&url, &span).await;
+    let info_type = match call_info.args.get("type") {
+        Some(info_type) => Some(info_type.as_string()?),
+        None => Some("current".to_string()),
+    };
+    let result = make_request(&url, &info_type.unwrap(), &span).await;
 
     if let Err(e) = result {
         return Err(e);
     }
+
 
     let (file_extension, contents, contents_tag) = result?;
     let tagged_contents = contents.retag(tag);
@@ -80,28 +109,48 @@ pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
 
 async fn make_request(
     url: &str,
+    info_type: &str,
     span: &Span,
 ) -> Result<(Option<String>, UntaggedValue, Tag), ShellError> {
     let mut response = surf::get(&url).await?;
 
-    // Deserialize json
-    let api_response: List = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
-    let serialized = serde_json::to_string(&api_response);
-
-    Ok((
-        Some("json".to_string()),
-        UntaggedValue::string(serialized.map_err(|_| {
-            ShellError::labeled_error(
-                "Could not load text from remote url",
-                "could not load",
-                span,
-            )
-        })?),
-        Tag {
-            span: *span,
-            anchor: Some(AnchorLocation::Url(url.to_string())),
-        },
-    ))
+    if info_type == "current" {
+        // Deserialize json
+        let api_response: List = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
+        let serialized = serde_json::to_string(&api_response);
+        Ok((
+            Some("json".to_string()),
+            UntaggedValue::string(serialized.map_err(|_| {
+                ShellError::labeled_error(
+                    "Could not load text from remote url",
+                    "could not load",
+                    span,
+                )
+            })?),
+            Tag {
+                span: *span,
+                anchor: Some(AnchorLocation::Url(url.to_string())),
+            },
+        ))
+    } else {
+        // Deserialize json
+        let api_response: ApiResponse = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
+        let serialized = serde_json::to_string(&api_response.list);
+        Ok((
+            Some("json".to_string()),
+            UntaggedValue::string(serialized.map_err(|_| {
+                ShellError::labeled_error(
+                    "Could not load text from remote url",
+                    "could not load",
+                    span,
+                )
+            })?),
+            Tag {
+                span: *span,
+                anchor: Some(AnchorLocation::Url(url.to_string())),
+            },
+        ))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -116,7 +165,7 @@ pub struct List {
     pub dt: i64,
     pub main: Main,
     pub weather: Vec<CurrentWeather>,
-    pub timezone: i64,
+    pub timezone: Option<i64>,
 }
 
 impl Serialize for List {
