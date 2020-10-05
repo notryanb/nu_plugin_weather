@@ -5,12 +5,13 @@ use nu_protocol::{
     CallInfo, CommandAction, ReturnSuccess, ReturnValue, Signature, SyntaxShape, UntaggedValue,
     Value,
 };
+use nu_data::*;
 use nu_source::{AnchorLocation, Span, Tag};
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 
 struct Weather {
-    pub api_key: String,
+    pub api_key: Option<String>,
     pub city: Option<String>,
     pub info_type: Option<String>,
 }
@@ -35,6 +36,17 @@ impl Plugin for Weather {
     }
 
     fn begin_filter(&mut self, call_info: CallInfo) -> Result<Vec<ReturnValue>, ShellError> {
+        let existing_tag = call_info.name_tag.clone();
+        let result = nu_data::config::read(&existing_tag, &None)?;
+
+        let cloned_span = existing_tag.clone();
+
+        let value = result
+            .get("open_weather_api_key")
+            .ok_or_else(|| ShellError::labeled_error("Missing 'open_weather_api_key' key in config", "key", cloned_span))?;
+
+        self.api_key = Some(value.expect_string().to_owned());
+
         self.city = match call_info.args.get("city") {
             Some(city) => Some(city.as_string()?),
             None => Some("huntington".to_string()),
@@ -51,13 +63,13 @@ impl Plugin for Weather {
             url = format!(
                 "https://api.openweathermap.org/data/2.5/weather?q={}&appid={}",
                 self.city.as_ref().unwrap(),
-                self.api_key
+                self.api_key.as_ref().unwrap(),
             );
         } else {
             url = format!(
                 "https://api.openweathermap.org/data/2.5/forecast?q={}&mode=json&appid={}",
                 self.city.as_ref().unwrap(),
-                self.api_key
+                self.api_key.as_ref().unwrap(),
             );
         }
 
@@ -74,11 +86,8 @@ impl Plugin for Weather {
 }
 
 fn main() {
-    let api_key = std::env::var("OPEN_WEATHER_API_KEY")
-        .expect("Missing OPEN_WEATHER_API_KEY ENV var")
-        .to_string();
     serve_plugin(&mut Weather {
-        api_key,
+        api_key: None,
         city: None,
         info_type: None,
     });
@@ -97,12 +106,10 @@ pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
         return Err(e);
     }
 
-
     let (file_extension, contents, contents_tag) = result?;
-    let tagged_contents = contents.retag(tag);
 
     Ok(ReturnSuccess::Action(CommandAction::AutoConvert(
-        tagged_contents,
+        contents.into_value(tag),
         "json".to_string(),
     )))
 }
@@ -174,7 +181,7 @@ impl Serialize for List {
         S: Serializer,
     {
         use chrono::{TimeZone, Utc};
-        let dt = Utc.timestamp(self.dt + self.timezone, 0);
+        let dt = Utc.timestamp(self.dt + self.timezone.unwrap_or(0), 0);
         let day_of_week = &dt.format("%A").to_string();
         let date = &dt.format("%b %e %Y").to_string();
         let time = &dt.format("%I:%M:%S %P").to_string();
