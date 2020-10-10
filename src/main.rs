@@ -5,7 +5,6 @@ use nu_protocol::{
     CallInfo, CommandAction, ReturnSuccess, ReturnValue, Signature, SyntaxShape, UntaggedValue,
     Value,
 };
-use nu_data::*;
 use nu_source::{AnchorLocation, Span, Tag};
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
@@ -26,12 +25,7 @@ impl Plugin for Weather {
                 "the city to retrieve weather for",
                 Some('c'),
             )
-            .named(
-                "type",
-                SyntaxShape::Any,
-                "current or forecast",
-                Some('t'),
-            )
+            .named("type", SyntaxShape::Any, "current or forecast", Some('t'))
             .filter())
     }
 
@@ -40,9 +34,13 @@ impl Plugin for Weather {
         let result = nu_data::config::read(&existing_tag, &None)?;
         let cloned_span = existing_tag.clone();
 
-        let value = result
-            .get("open_weather_api_key")
-            .ok_or_else(|| ShellError::labeled_error("Missing 'open_weather_api_key' key in config", "key", cloned_span))?;
+        let value = result.get("open_weather_api_key").ok_or_else(|| {
+            ShellError::labeled_error(
+                "Missing 'open_weather_api_key' key in config",
+                "key",
+                cloned_span,
+            )
+        })?;
 
         self.api_key = Some(value.expect_string().to_owned());
 
@@ -75,7 +73,7 @@ impl Plugin for Weather {
         Ok(vec![block_on(weather_helper(&url, &call_info))])
     }
 
-    fn filter(&mut self, value: Value) -> Result<Vec<ReturnValue>, ShellError> {
+    fn filter(&mut self, _value: Value) -> Result<Vec<ReturnValue>, ShellError> {
         Ok(vec![])
     }
 
@@ -105,7 +103,7 @@ pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
         return Err(e);
     }
 
-    let (file_extension, contents, contents_tag) = result?;
+    let (_file_extension, contents, _contents_tag) = result?;
 
     Ok(ReturnSuccess::Action(CommandAction::AutoConvert(
         contents.into_value(tag),
@@ -122,7 +120,8 @@ async fn make_request(
 
     if info_type == "current" {
         // Deserialize json
-        let api_response: List = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
+        let api_response: List =
+            serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
         let serialized = serde_json::to_string(&api_response);
         Ok((
             Some("json".to_string()),
@@ -140,7 +139,8 @@ async fn make_request(
         ))
     } else {
         // Deserialize json
-        let api_response: ApiResponse = serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
+        let api_response: ApiResponse =
+            serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
         let serialized = serde_json::to_string(&api_response.list);
         Ok((
             Some("json".to_string()),
