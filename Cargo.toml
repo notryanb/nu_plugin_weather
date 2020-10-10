@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 futures = { version = "0.3", features = ["compat", "io-compat"] }
-nu-data = "0.20.0"
+nu-data = { version = "0.20.0", features = ["directories", "dirs"] }
 nu-errors = "0.20.0"
 nu-plugin = "0.20.0"
 nu-protocol = "0.20.0"

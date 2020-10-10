@@ -38,7 +38,6 @@ impl Plugin for Weather {
     fn begin_filter(&mut self, call_info: CallInfo) -> Result<Vec<ReturnValue>, ShellError> {
         let existing_tag = call_info.name_tag.clone();
         let result = nu_data::config::read(&existing_tag, &None)?;
-
         let cloned_span = existing_tag.clone();
 
         let value = result
