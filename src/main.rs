@@ -117,11 +117,11 @@ async fn make_request(
     span: &Span,
 ) -> Result<(Option<String>, UntaggedValue, Tag), ShellError> {
     let mut response = surf::get(&url).await?;
+    let response_body = &response.body_string().await?;
 
     if info_type == "current" {
         // Deserialize json
-        let api_response: List =
-            serde_json::from_str(&response.body_string().await.unwrap()).unwrap();
+        let api_response: List = serde_json::from_str(response_body)?;
         let serialized = serde_json::to_string(&api_response);
         Ok((
             Some("json".to_string()),
@@ -179,8 +179,10 @@ impl Serialize for List {
     where
         S: Serializer,
     {
-        use chrono::{TimeZone, Utc};
+        use chrono::prelude::*;
         let dt = Utc.timestamp(self.dt + self.timezone.unwrap_or(0), 0);
+        let hour = &dt.hour();
+        // let the_time = &dt.time();
         let day_of_week = &dt.format("%A").to_string();
         let date = &dt.format("%b %e %Y").to_string();
         let time = &dt.format("%I:%M:%S %P").to_string();
@@ -198,10 +200,14 @@ impl Serialize for List {
         if let Some(weather) = &self.weather.iter().take(1).next() {
             let emoji = match &weather.main {
                 WeatherCondition::Clouds => "☁",
-                WeatherCondition::Clear => "🌞",
+                WeatherCondition::Clear if (*hour > 6 && *hour < 16) => "☀",
+                WeatherCondition::Clear if (*hour <= 6 || *hour >= 16 )=> "🌑",
                 WeatherCondition::Rain => "🌧",
+                WeatherCondition::Snow => "🌨",
+                WeatherCondition::Thunderstorm => "⛈",
+                WeatherCondition::Tornado => "🌪",
                 WeatherCondition::Haze => "🌫",
-                _ => "no emoji",
+                _ => "",
             };
 
             state.serialize_field("main", &weather.main)?;
