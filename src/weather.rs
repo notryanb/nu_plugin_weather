@@ -1,20 +1,16 @@
 // use futures::executor::block_on;
 use nu_errors::ShellError;
 // use nu_plugin::{serve_plugin, Plugin};
-use nu_protocol::{
-    CallInfo, CommandAction, ReturnSuccess, ReturnValue, UntaggedValue,
-};
+use nu_protocol::{CallInfo, CommandAction, ReturnSuccess, ReturnValue, UntaggedValue};
 use nu_source::{AnchorLocation, Span, Tag};
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-
 
 pub struct Weather {
     pub api_key: Option<String>,
     pub city: Option<String>,
     pub info_type: Option<String>,
 }
-
 
 pub async fn weather_helper(url: &str, call_info: &CallInfo) -> ReturnValue {
     let tag = &call_info.name_tag;
@@ -65,8 +61,7 @@ async fn make_request(
         ))
     } else {
         // Deserialize json
-        let api_response: ApiResponse =
-            serde_json::from_str(&response_body)?;
+        let api_response: ApiResponse = serde_json::from_str(&response_body)?;
         let serialized = serde_json::to_string(&api_response.list);
         Ok((
             Some("json".to_string()),
@@ -127,7 +122,7 @@ impl Serialize for List {
             let emoji = match &weather.main {
                 WeatherCondition::Clouds => "☁",
                 WeatherCondition::Clear if (*hour > 6 && *hour < 16) => "☀",
-                WeatherCondition::Clear if (*hour <= 6 || *hour >= 16 )=> "🌑",
+                WeatherCondition::Clear if (*hour <= 6 || *hour >= 16) => "🌑",
                 WeatherCondition::Rain => "🌧",
                 WeatherCondition::Snow => "🌨",
                 WeatherCondition::Thunderstorm => "⛈",

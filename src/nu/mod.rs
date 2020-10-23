@@ -1,9 +1,7 @@
 use futures::executor::block_on;
 use nu_errors::ShellError;
-use nu_plugin::{Plugin};
-use nu_protocol::{
-    CallInfo, ReturnValue, Signature, SyntaxShape,
-};
+use nu_plugin::Plugin;
+use nu_protocol::{CallInfo, ReturnValue, Signature, SyntaxShape};
 
 use crate::weather::weather_helper;
 use crate::Weather;
