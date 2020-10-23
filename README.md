@@ -11,7 +11,7 @@ Eventually this will be mapped to much nicer data displaying emojis.
 
 - From the build directory, `cargo install --path .`
 - You must have an API Key from the [OpenWeather API](https://openweathermap.org/api)
-- It must be saved as an environment variable on your machine as `OPEN_WEATHER_API_KEY`
+- Add a section to your nushell config called `open_weather_api_key`. ex. `config set open_weather_api_key <YOUR API KEY HERE>`
 
 ## Usage
 
